@@ -5,6 +5,8 @@ name: LibreTranslate server (top-voice-1)
 #            containers next to it. Changes nothing.
 #   verify   calls it from outside the way each caller does, and compares its
 #            /detect answers with the old instance. Changes nothing.
+#   compare  the same checks, run on the server against 127.0.0.1:5200, so
+#            they work before the hostname's DNS does. Changes nothing.
 #   logs     its last 200 log lines. Changes nothing.
 #   restart  restarts the container.
 #   stop     takes it off: the hostname first, then the container. The models
@@ -15,9 +17,9 @@ on:
   workflow_dispatch:
     inputs:
       action:
-        description: What to do. status, verify and logs change nothing.
+        description: What to do. status, verify, compare and logs change nothing.
         type: choice
-        options: [status, verify, logs, restart, stop, start]
+        options: [status, verify, compare, logs, restart, stop, start]
         default: status
         required: true
       confirm:
@@ -31,7 +33,7 @@ on:
         required: false
         default: https://lt.makehybrid.com
       old_url:
-        description: For verify — the old instance, to compare /detect answers with
+        description: For verify and compare — the old instance, to compare /detect answers with
         type: string
         required: false
         default: http://65.108.253.194:5000
@@ -84,6 +86,8 @@ jobs:
 
       - name: On the server
         if: inputs.action != 'verify' && steps.ready.outputs.ready == 'true'
+        env:
+          OLD_URL: ${{ inputs.old_url }}
         run: deploy/hetzner/github-deploy.sh server
 
       - name: Summary
