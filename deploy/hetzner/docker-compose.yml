@@ -1,0 +1,71 @@
+# LibreTranslate on top-voice-1, next to Top Voice and FOMO Maldives.
+#
+# Its own compose project, so nothing here can touch theirs. It joins the
+# shared `edge` network (created by Top Voice's compose file) under the name
+# `libretranslate`, and Top Voice's Caddy reaches it there for the hostname in
+# lt.caddy. No port is open to the internet: 127.0.0.1:5200 is for checks on
+# the server itself.
+#
+# Run it through deploy.sh, which builds the image for a commit, records its
+# tag in .env (APP_IMAGE_TAG) and checks it answers before calling it done.
+# Settings are in .env next to this file (bootstrap.sh writes the first one).
+name: libretranslate
+
+services:
+  libretranslate:
+    image: libretranslate-app:${APP_IMAGE_TAG:-none}
+    build:
+      context: ../..
+      dockerfile: docker/Dockerfile
+    restart: unless-stopped
+    init: true
+    environment:
+      # Exactly the languages the old instance served (its /languages). They
+      # also decide what /detect can answer, so this list is part of the API.
+      LT_LOAD_ONLY: ${LT_LOAD_ONLY:?LT_LOAD_ONLY must be set in .env}
+      # Same as the old instance: no key needed, no character limit. Turning
+      # keys on is a separate step (DEPLOY.md, "API keys").
+      LT_API_KEYS: ${LT_API_KEYS:-false}
+      LT_API_KEYS_DB_PATH: /app/db/api_keys.db
+      LT_CHAR_LIMIT: ${LT_CHAR_LIMIT:--1}
+      LT_REQ_LIMIT: ${LT_REQ_LIMIT:--1}
+      # gunicorn workers. Each loads the translation models it is asked for,
+      # so memory grows with this; mem_limit below caps the total.
+      LT_THREADS: ${LT_THREADS:-4}
+      # Models are installed by deploy.sh (models.py) before a container
+      # starts, never updated by LibreTranslate on its own.
+      LT_UPDATE_MODELS: "false"
+    volumes:
+      # The translation models (~ several GB): downloaded once, kept across
+      # deploys and rollbacks.
+      - models:/home/libretranslate/.local
+      # The API keys database (empty while keys are off) and runtime files.
+      - db:/app/db
+    ports:
+      - "127.0.0.1:5200:5000"
+    networks:
+      default: {}
+      edge:
+        aliases: [libretranslate]
+    mem_limit: ${LT_MEMORY:-4g}
+    cpus: ${LT_CPUS:-3}
+    healthcheck:
+      test: ["CMD-SHELL", "./venv/bin/python scripts/healthcheck.py"]
+      interval: 30s
+      timeout: 10s
+      retries: 4
+      start_period: 120s
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"
+
+volumes:
+  models: {}
+  db: {}
+
+networks:
+  edge:
+    external: true
+    name: edge

@@ -9,3 +9,7 @@ chart/
 *.yaml
 *.md
 !README.md
+
+# The Hetzner deploy files (deploy/hetzner) are not part of the image, and
+# that folder holds the server's .env, which must never be copied into one.
+deploy/

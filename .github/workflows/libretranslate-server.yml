@@ -1,0 +1,91 @@
+name: LibreTranslate server (top-voice-1)
+
+# LibreTranslate on top-voice-1 without a terminal (deploy/hetzner/DEPLOY.md):
+#   status   its health, memory, models, hostname, and Top Voice's and FOMO's
+#            containers next to it. Changes nothing.
+#   verify   calls it from outside the way each caller does, and compares its
+#            /detect answers with the old instance. Changes nothing.
+#   logs     its last 200 log lines. Changes nothing.
+#   restart  restarts the container.
+#   stop     takes it off: the hostname first, then the container. The models
+#            and keys are kept; `start` or a deploy brings it back.
+#   start    starts it again and serves the hostname.
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: What to do. status, verify and logs change nothing.
+        type: choice
+        options: [status, verify, logs, restart, stop, start]
+        default: status
+        required: true
+      confirm:
+        description: For stop only — type top-voice-1
+        type: string
+        required: false
+        default: ""
+      url:
+        description: For verify — the address callers will use
+        type: string
+        required: false
+        default: https://lt.makehybrid.com
+      old_url:
+        description: For verify — the old instance, to compare /detect answers with
+        type: string
+        required: false
+        default: http://65.108.253.194:5000
+
+permissions: {}
+
+concurrency:
+  group: libretranslate-server
+  cancel-in-progress: false
+
+jobs:
+  server:
+    name: ${{ inputs.action }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    env:
+      APP_SSH_KEY: ${{ secrets.APP_SSH_KEY }}
+      APP_SSH_HOST_KEY: ${{ secrets.APP_SSH_HOST_KEY }}
+      APP_HOST: ${{ vars.APP_HOST || '46.224.170.196' }}
+      ACTION: ${{ inputs.action }}
+    steps:
+      - name: Get the scripts
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: deploy/hetzner
+
+      - name: Was stop meant?
+        if: inputs.action == 'stop'
+        env:
+          CONFIRM: ${{ inputs.confirm }}
+        run: |
+          [ "$CONFIRM" = "top-voice-1" ] || {
+            echo "::error::To stop LibreTranslate, type top-voice-1 in the confirm box. Nothing was changed."
+            exit 1
+          }
+
+      - name: Check it from outside, as each caller calls it
+        if: inputs.action == 'verify'
+        env:
+          URL: ${{ inputs.url }}
+          OLD_URL: ${{ inputs.old_url }}
+        run: python3 deploy/hetzner/verify.py "$URL" "$OLD_URL"
+
+      - name: Is this repository set up to reach the server?
+        id: ready
+        if: inputs.action != 'verify'
+        run: deploy/hetzner/github-deploy.sh ready >> "$GITHUB_OUTPUT"
+
+      - name: On the server
+        if: inputs.action != 'verify' && steps.ready.outputs.ready == 'true'
+        run: deploy/hetzner/github-deploy.sh server
+
+      - name: Summary
+        if: always() && inputs.action != 'verify'
+        run: deploy/hetzner/github-deploy.sh summary

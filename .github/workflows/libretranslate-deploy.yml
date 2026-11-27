@@ -1,0 +1,63 @@
+name: Deploy LibreTranslate (top-voice-1)
+
+# Builds a commit of this repository on top-voice-1 and runs it there, next to
+# Top Voice and FOMO Maldives (deploy/hetzner/DEPLOY.md). Then checks it from
+# outside, the way each caller calls it.
+#
+# ONLY BY HAND (Actions -> this workflow -> Run workflow). Never on a push:
+# this is a fork, and syncing it with upstream must not deploy a new version
+# by itself. A rollback is this same button with an earlier commit.
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit:
+        description: Commit or branch to deploy (a rollback is an earlier commit)
+        type: string
+        default: main
+        required: true
+
+permissions: {}
+
+concurrency:
+  group: libretranslate-server
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy ${{ inputs.commit }}
+    runs-on: ubuntu-24.04
+    # The first deploy downloads every translation model.
+    timeout-minutes: 150
+    permissions:
+      contents: read
+    env:
+      APP_SSH_KEY: ${{ secrets.APP_SSH_KEY }}
+      APP_SSH_HOST_KEY: ${{ secrets.APP_SSH_HOST_KEY }}
+      APP_HOST: ${{ vars.APP_HOST || '46.224.170.196' }}
+    steps:
+      - name: Get the scripts
+        uses: actions/checkout@v4
+        with:
+          sparse-checkout: deploy/hetzner
+
+      - name: Is this repository set up to reach the server?
+        id: ready
+        run: deploy/hetzner/github-deploy.sh ready >> "$GITHUB_OUTPUT"
+
+      - name: Deploy on the server
+        id: deploy
+        if: steps.ready.outputs.ready == 'true'
+        env:
+          COMMIT: ${{ inputs.commit }}
+          CLONE_URL: https://github.com/${{ github.repository }}.git
+          GIT_TOKEN: ${{ github.token }}
+        run: deploy/hetzner/github-deploy.sh deploy
+
+      - name: Check it from outside, as each caller calls it
+        if: steps.deploy.outcome == 'success'
+        run: python3 deploy/hetzner/verify.py
+
+      - name: Summary
+        if: always()
+        run: deploy/hetzner/github-deploy.sh summary
