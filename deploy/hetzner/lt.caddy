@@ -1,0 +1,26 @@
+# LibreTranslate's public name, served by Top Voice's Caddy on top-voice-1.
+#
+# sites.sh installs this file as /opt/caddy-sites/libretranslate.caddy, but
+# only the site blocks whose DNS points at this server (so Caddy never asks
+# for a certificate it cannot get), and only if the shared configuration
+# still validates with it; otherwise the previous file goes back. Caddy gets
+# and renews the HTTPS certificate itself.
+#
+# Callers use https://lt.makehybrid.com/detect, /translate, /languages: the
+# same paths and request bodies as the old http://<ip>:5000 address.
+
+lt.makehybrid.com {
+	# The web page at / is LibreTranslate's own; keep it out of search engines.
+	header X-Robots-Tag "noindex, nofollow"
+
+	# Caddy passes the caller's address in X-Forwarded-For, which LibreTranslate
+	# uses for its (currently off) per-caller limits.
+	reverse_proxy libretranslate:5000
+
+	# While the container restarts (a deploy), answer like LibreTranslate's own
+	# errors do -- JSON with an "error" field -- instead of an HTML page.
+	handle_errors 502 503 504 {
+		header Content-Type application/json
+		respond `{"error":"LibreTranslate is restarting. Try again in a minute."}` 503
+	}
+}
