@@ -4,9 +4,12 @@
 #
 #   github-deploy.sh ready      is this repository set up to reach the server?
 #   github-deploy.sh deploy     get COMMIT onto the server and deploy it
-#   github-deploy.sh server     ACTION on the server: status, logs, restart,
-#                               stop (take it off: hostname, then container;
-#                               the models and keys volumes are kept), start
+#   github-deploy.sh server     ACTION on the server: status, compare (the
+#                               caller-style checks of verify.py, run ON the
+#                               server against 127.0.0.1:5200, so it works
+#                               before DNS does), logs, restart, stop (take it
+#                               off: hostname, then container; the models and
+#                               keys volumes are kept), start
 #   github-deploy.sh summary    always: the plain-English summary of a run
 #
 # Before APP_SSH_KEY exists this does nothing: `ready` is false and every
@@ -106,11 +109,15 @@ cmd_server() {
   local remote
   case "$action" in
     status) remote="bash status.sh" ;;
+    compare)
+      # This run's verify.py, not the deployed commit's.
+      ssh_to "umask 077 && cat > /root/.libretranslate-verify.py" < "$HERE/verify.py"
+      remote="python3 -I /root/.libretranslate-verify.py http://127.0.0.1:5200 $(printf '%q' "${OLD_URL:-http://65.108.253.194:5000}"); rc=\$?; rm -f /root/.libretranslate-verify.py; exit \$rc" ;;
     logs) remote="docker compose logs --no-color --tail 200 libretranslate" ;;
     restart) remote="docker compose restart libretranslate && sleep 20 && bash status.sh" ;;
     stop) remote="bash sites.sh --remove; docker compose stop libretranslate && echo 'Stopped. The models and keys volumes are kept; start (or a deploy) brings it back.'" ;;
     start) remote="docker compose up -d libretranslate && bash sites.sh && sleep 30 && bash status.sh" ;;
-    *) die "action is status, logs, restart, stop or start." ;;
+    *) die "action is status, compare, logs, restart, stop or start." ;;
   esac
   ssh_to "test -d $REMOTE_DIR" || die "LibreTranslate has not been deployed to $APP_HOST yet (no $REMOTE_DIR)."
   set +e

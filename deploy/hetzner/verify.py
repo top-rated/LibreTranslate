@@ -28,7 +28,9 @@ the run when more than a few differ), so they can be looked at before a
 caller is switched.
 """
 import json
+import shutil
 import socket
+import subprocess
 import sys
 import time
 import urllib.error
@@ -121,6 +123,29 @@ def ok(msg):
     print(f"  ok    {msg}")
 
 
+def dig(*args):
+    if not shutil.which("dig"):
+        return "(dig is not installed)"
+    out = subprocess.run(["dig", "+short", "+time=3", "+tries=2", *args], capture_output=True, text=True).stdout.split()
+    return " ".join(out) or "(nothing)"
+
+
+def diagnose_dns(name):
+    """Why a name does not resolve: ask the zone's own nameservers, and check
+    the usual slip of a record saved as name.zone.zone."""
+    zone = ".".join(name.split(".")[-2:])
+    ns = dig("NS", zone)
+    print(f"        nameservers of {zone}: {ns}")
+    for server in ns.split()[:2]:
+        if server.startswith("("):
+            break
+        print(f"        {server} says {name} A = {dig('@' + server, name, 'A')}, AAAA = {dig('@' + server, name, 'AAAA')}, CNAME = {dig('@' + server, name, 'CNAME')}")
+        doubled = f"{name}.{zone}"
+        print(f"        {server} says {doubled} A = {dig('@' + server, doubled, 'A')}  (a record saved with the full name typed in)")
+    for resolver in ("1.1.1.1", "8.8.8.8"):
+        print(f"        public resolver {resolver}: {name} A = {dig('@' + resolver, name, 'A')}")
+
+
 host = urllib.parse.urlparse(NEW).hostname
 print(f"== {NEW}  (compared with {OLD})")
 try:
@@ -128,6 +153,7 @@ try:
     ok(f"{host} resolves to {', '.join(addrs)}")
 except OSError as e:
     fail(f"{host} does not resolve: {e}")
+    diagnose_dns(host)
     print("\nStopping: nothing can reach it without DNS.")
     sys.exit(1)
 

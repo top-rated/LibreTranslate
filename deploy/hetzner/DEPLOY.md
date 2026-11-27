@@ -22,8 +22,10 @@ address changed from `http://65.108.253.194:5000`.
 - **Deploy LibreTranslate (top-voice-1)**: builds a commit and runs it. Only by
   hand; merging or syncing the fork deploys nothing. It ends by calling the
   new address from outside the way each caller does (`verify.py`).
-- **LibreTranslate server (top-voice-1)**: `status`, `verify` and `logs` change
-  nothing; `restart`, `stop` (type `top-voice-1`) and `start`.
+- **LibreTranslate server (top-voice-1)**: `status`, `verify`, `compare` and
+  `logs` change nothing. `compare` runs `verify`'s checks on the server itself,
+  against `127.0.0.1:5200`, so it works before DNS does. Then `restart`,
+  `stop` (type `top-voice-1`) and `start`.
 
 ## Setting up (once)
 
